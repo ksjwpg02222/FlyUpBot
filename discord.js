@@ -3,10 +3,34 @@ const { token } = require('./token.json');
 const Discord = require('discord.js');
 const axios = require('axios').default
 const { GoogleSpreadsheet } = require('google-spreadsheet')
-const fs = require('fs')
-const path = require('path')
+const fs = require('fs');
 const googleSheetKey = './googleSheetKey.json'
+const mapperNum = {
+                    'T4' :'C',
+                    'T4.1' : 'D',
+                    'T4.2' : 'E',
+                    'T4.3' : 'F',
+                    'T5' : 'G',
+                    'T5.1' : 'H',
+                    'T5.2' : 'I',
+                    'T5.3' : 'J',
+                    'T6' : 'K',
+                    'T6.1' : 'L',
+                    'T6.2' : 'M',
+                    'T6.3' :  'N',
+                    'T7' :  'O',
+                    'T7.1' : 'P',
+                    'T7.2' : 'Q',
+                    'T7.3' :  'R',
+                    'T8' :  'S',
+                    'T8.1' :  'T',
+                    'T8.2' : 'U',
+                    'T8.3' :  'V',
+}
 
+const googleSheet = '1Ca6zm5LCpdRiALlxwHES9xhdfSHgjUzjKUwJNkup25U'
+const readSheet = 1670189158
+const addSheet = 1382021423
 
 const clinet = new Discord.Client({
     intents: [
@@ -24,38 +48,24 @@ clinet.on('ready', () => {
 
 clinet.on('messageCreate', async (msg) => {
     const words = msg.content.split('/')
-    console.log(words)
-
 
     if (words[2] == 'albiononline.com') {
         const eventId = words[words.length - 1]
         if (handleEventIdExist(eventId)) {
-            msg.channel.send('這個補裝紀錄已經存在')
+            msg.reply('這個補裝紀錄已經存在')
             return
         }
 
-        let jsonData
-        try {
-            const jsonEntity = fs.readFileSync('./data.json')
-            jsonData = JSON.parse(jsonEntity)
-        } catch {
-            jsonData = {}
+        try{
+            const { data } = await axios.get('https://gameinfo.albiononline.com/api/gameinfo/events/' + eventId)
+            await addData(googleSheet, addSheet, data.Victim, eventId)
+            let jsonData = handleReadJson()
+            jsonData = { ...jsonData, [eventId]: eventId }
+            handleWriteFile(jsonData)
+            msg.reply('補裝申請完成')
+        }catch{
+            msg.reply('發生錯誤，請洽管理員')
         }
-        jsonData = { ...jsonData, [eventId]: eventId }
-        handleWriteFile(jsonData)
-
-
-
-        const { data } = await axios.get('https://gameinfo.albiononline.com/api/gameinfo/events/' + eventId)
-        await addData('1GR_8-DQdRmtAvGZ6oqW9K-cNr60B9klRfn_JDXvOBF4', '0', data.Victim, eventId)
-
-        msg.channel.send('補裝申請完成')
-
-    }
-
-    if (msg.content === 'test') {
-        await getData('1GR_8-DQdRmtAvGZ6oqW9K-cNr60B9klRfn_JDXvOBF4', '1742503688')
-        msg.channel.send('hello')
     }
 })
 
@@ -69,6 +79,12 @@ function handleWriteFile(data) {
 
 function handleEventIdExist(eventId) {
 
+    const data = handleReadJson()
+
+    return Object.keys(data).some(key => key === eventId)
+}
+
+function handleReadJson() {
     let data
     try {
         const jsonData = fs.readFileSync('./data.json')
@@ -76,22 +92,45 @@ function handleEventIdExist(eventId) {
     } catch {
         data = {}
     }
-
-    return Object.keys(data).some(key => key === eventId)
+    return data
 }
 
 async function getData(docID, sheetID) {
-    const result = [];
     const doc = new GoogleSpreadsheet(docID);
     const creds = require(googleSheetKey);
     await doc.useServiceAccountAuth(creds);
     await doc.loadInfo();
     const sheet = doc.sheetsById[sheetID];
     const rows = await sheet.getRows();
-    for (row of rows) {
-        result.push(row._rawData);
-      }
-    console.log(result)
+    return rows.reduce((prev, current) => {
+        const row = current._rawData
+        return { ...prev, 
+            [row[0]]: { name : row[1],
+                price :{
+                    'T4' : row[2],
+                    'T4.1' : row[3],
+                    'T4.2' : row[4],
+                    'T4.3' : row[5],
+                    'T5' : row[6],
+                    'T5.1' : row[7],
+                    'T5.2' : row[8],
+                    'T5.3' : row[9],
+                    'T6' : row[10],
+                    'T6.1' : row[11],
+                    'T6.2' : row[12],
+                    'T6.3' : row[13],
+                    'T7' : row[14],
+                    'T7.1' : row[15],
+                    'T7.2' : row[16],
+                    'T7.3' : row[17],
+                    'T8' : row[18],
+                    'T8.1' : row[19],
+                    'T8.2' : row[20],
+                    'T8.3' : row[21]
+                },
+                rowNum : current._rowNumber
+        }  }
+    }, {})
 };
 
 async function addData(docID, sheetID, eventData, eventId) {
@@ -101,20 +140,79 @@ async function addData(docID, sheetID, eventData, eventId) {
     await doc.loadInfo();
     const items = eventData.Equipment
     const sheet = doc.sheetsById[sheetID];
-    await sheet.addRow({
+
+    const itemsInfo = await handleItemName(items)
+
+    const priceTotal = Object.keys(itemsInfo.price).reduce((prev , current) =>{
+        return  prev += +itemsInfo.price[current] || 0
+     },0)
+  
+
+    await sheet.addRows([{
         名稱: "=HYPERLINK(\"https://albiononline.com/en/killboard/kill/" + eventId + "\",\"" + eventData.Name + "\")",
-        武器: items.MainHand.Type,
-        副手: items.OffHand?.Type,
-        頭: items.Head.Type,
-        身: items.Armor.Type,
-        腳: items.Shoes.Type,
-        披風: items.Cape.Type,
-        坐騎: items.Mount.Type,
-        事件ID: eventId
-    })
+        ...itemsInfo.data,
+        事件ID: eventId,
+    },{
+        名稱: "",
+        ...itemsInfo.price,
+        事件ID: priceTotal,
+    }])
+
+}
+
+async function handleItemName(items) {
+
+    const itemsMapper = await getData(googleSheet, readSheet)
+
+    function handleDisplayName(type) {
+        if (!type) {
+            return type
+        }
+        const arr = type?.split('@')
+        const enchantmentLevel = arr[1] || '';
+        const itemInfo = arr[0].split('_');
+        const itemLevel = itemInfo.shift()
+        return itemsMapper[itemInfo.join('_')]?.name ? itemLevel + (enchantmentLevel ? '.' + enchantmentLevel : '') + itemsMapper[itemInfo.join('_')].name : type
+    }
+
+    function handlePrice(type){
+        if (!type) {
+            return 0
+        }
+
+        const arr = type?.split('@')
+        const enchantmentLevel = arr[1] || '';
+        const itemInfo = arr[0].split('_');
+        const itemLevel = itemInfo.shift()
+
+        return itemsMapper[itemInfo.join('_')]?.name ? 
+        '=IMPORTRANGE("https://docs.google.com/spreadsheets/d/1Ca6zm5LCpdRiALlxwHES9xhdfSHgjUzjKUwJNkup25U/edit#gid=1382021423","裝備列表!'+   mapperNum[itemLevel + (enchantmentLevel ? '.' + enchantmentLevel : '')]   +itemsMapper[itemInfo.join('_')].rowNum +'")': 
+        0
+    }
+
+    const data =
+    {
+        武器: handleDisplayName(items.MainHand?.Type),
+        副手: handleDisplayName(items.OffHand?.Type),
+        頭: handleDisplayName(items.Head?.Type),
+        身: handleDisplayName(items.Armor?.Type),
+        腳: handleDisplayName(items.Shoes?.Type),
+        披風: handleDisplayName(items.Cape?.Type),
+        坐騎: handleDisplayName(items.Mount?.Type),
+    }
+
+    const price = 
+    {
+        武器: handlePrice(items.MainHand?.Type),
+        副手: handlePrice(items.OffHand?.Type),
+        頭: handlePrice(items.Head?.Type),
+        身: handlePrice(items.Armor?.Type),
+        腳: handlePrice(items.Shoes?.Type),
+        披風: handlePrice(items.Cape?.Type),
+        坐騎: handlePrice(items.Mount?.Type),
+    }
+
+    return {data : data , price : price}
 }
 
 
-async function recordData() {
-
-}
