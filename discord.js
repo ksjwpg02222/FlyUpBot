@@ -156,7 +156,7 @@ async function addData(docID, sheetID, eventData, eventId) {
         ...itemsInfo.data,
         事件ID: eventId,
     }, {
-        名稱: "",
+        名稱: "價格",
         ...itemsInfo.price,
         事件ID: "",
     }])
