@@ -5,6 +5,9 @@ const axios = require('axios').default
 const { GoogleSpreadsheet } = require('google-spreadsheet')
 const fs = require('fs');
 const googleSheetKey = './googleSheetKey.json'
+const AsyncLock = require('async-lock');
+var lock = new AsyncLock({ domainReentrant: true });
+
 const colNumMapper = {
     'T4': 'C',
     'T4.1': 'D',
@@ -35,11 +38,11 @@ const express = require('express');
 const app = express();
 
 app.get('/', function (req, res) {
-  res.send('Hello World!');
+    res.send('Hello World!');
 });
 
 app.listen(3000, function () {
-  console.log('Example app listening on port!');
+    console.log('Example app listening!');
 });
 
 const clinet = new Discord.Client({
@@ -51,44 +54,52 @@ const clinet = new Discord.Client({
 
 clinet.on('ready', () => {
     console.log('ready')
-    console.log(Intents.FLAGS.GUILDS)
-    console.log(Intents.FLAGS.GUILD_MESSAGES)
-
 })
 
 clinet.on('messageCreate', async (msg) => {
     const words = msg.content.split('/')
 
     if (words[2] == 'albiononline.com') {
-        const eventId = words[words.length - 1]
-        if (handleEventIdExist(eventId)) {
-            msg.reply('這個補裝紀錄已經存在')
-            return
-        }
+        lock.acquire('key', async function (done) {
 
-        try {
-            const { data } = await axios.get(`https://gameinfo.albiononline.com/api/gameinfo/events/${eventId}`)
-            if (data.Victim.GuildName !== 'fly up') {
-                msg.reply('此人員並不是公會成員。')
-                return
+            async function work() {
+                const eventId = words[words.length - 1]
+                if (handleEventIdExist(eventId)) {
+                    msg.reply('這個補裝紀錄已經存在')
+                    return
+                }
+
+                try {
+                    const { data } = await axios.get(`https://gameinfo.albiononline.com/api/gameinfo/events/${eventId}`)
+                    if (data.Victim.GuildName !== 'fly up') {
+                        msg.reply('此人員並不是公會成員。')
+                        return
+                    }
+
+                    await addData(spreadSheetsId, workSheetId, data.Victim, eventId)
+
+                    let jsonData = await handleReadJson()
+                    jsonData[eventId] = eventId
+                    handleWriteFile(jsonData)
+                    msg.reply('補裝申請完成。')
+                } catch {
+                    msg.reply('發生錯誤，請洽相關管理人員。')
+                }
+
             }
+            await work();
 
-            await addData(spreadSheetsId, workSheetId, data.Victim, eventId)
+            done('no err', 'ok');
+        }, function (err, ret) {
+        });
 
-            let jsonData = handleReadJson()
-            jsonData = { ...jsonData, [eventId]: eventId }
-            handleWriteFile(jsonData)
-            msg.reply('補裝申請完成。')
-        } catch {
-            msg.reply('發生錯誤，請洽相關管理人員。')
-        }
     }
 })
 
 clinet.login(token)
 
 function handleWriteFile(data) {
-    fs.writeFile('./data.json', JSON.stringify(data), function () {
+    fs.writeFileSync('./data.json', JSON.stringify(data), function () {
         console.log('資料儲存成功')
     })
 }
@@ -160,28 +171,34 @@ async function handleItemName(items) {
         if (!type) {
             return type
         }
-        const arr = type?.split('@')
-        const enchantmentLevel = arr[1] || '';
-        const itemInfo = arr[0].split('_');
-        const itemLevel = itemInfo.shift()
-        const itemLevelAndEnchantmentLevel = itemLevel + (enchantmentLevel ? '.' + enchantmentLevel : '');
-        return itemsMapper[itemInfo.join('_')]?.name ? itemLevelAndEnchantmentLevel + itemsMapper[itemInfo.join('_')].name : type
+
+        const item = handleSplitString(type)
+
+        return itemsMapper[item.itemInfo.join('_')]?.name ? item.itemLevelAndEnchantmentLevel + itemsMapper[item.itemInfo.join('_')].name : type
     }
 
     function handlePrice(type) {
         if (!type) {
             return 0
         }
+        const item = handleSplitString(type)
 
+        return itemsMapper[item.itemInfo.join('_')]?.name ?
+            `=IMPORTRANGE("https://docs.google.com/spreadsheets/d/${spreadSheetsId}/edit#gid=${workSheetId}","裝備列表!${colNumMapper[item.itemLevelAndEnchantmentLevel]}${itemsMapper[item.itemInfo.join('_')].rowNum}")` :
+            0
+    }
+
+    function handleSplitString(type) {
         const arr = type?.split('@')
         const enchantmentLevel = arr[1] || '';
         const itemInfo = arr[0].split('_');
         const itemLevel = itemInfo.shift()
         const itemLevelAndEnchantmentLevel = itemLevel + (enchantmentLevel ? '.' + enchantmentLevel : '');
 
-        return itemsMapper[itemInfo.join('_')]?.name ?
-            `=IMPORTRANGE("https://docs.google.com/spreadsheets/d/${spreadSheetsId}/edit#gid=${workSheetId}","裝備列表!${colNumMapper[itemLevelAndEnchantmentLevel]}${itemsMapper[itemInfo.join('_')].rowNum}")` :
-            0
+        return {
+            itemInfo: itemInfo,
+            itemLevelAndEnchantmentLevel: itemLevelAndEnchantmentLevel
+        }
     }
 
     const data =
