@@ -1,8 +1,11 @@
 const { Intents } = require('discord.js');
-const { token } = require('./token.json');
+// const { token } = require('./token.json');
+const { token } = os.environ["token"]
 const Discord = require('discord.js');
 const axios = require('axios').default
 const { GoogleSpreadsheet } = require('google-spreadsheet')
+
+
 const fs = require('fs');
 const googleSheetKey = './googleSheetKey.json'
 const AsyncLock = require('async-lock');
