@@ -1,7 +1,7 @@
 const { Intents } = require('discord.js');
-// const { token } = require('./token.json');
+const { token } = require('./token.json');
 const token = process.env.token
-const Discord = require('discord.js');
+// const Discord = require('discord.js');
 const axios = require('axios').default
 const { GoogleSpreadsheet } = require('google-spreadsheet')
 
@@ -40,13 +40,13 @@ const workSheetId = 1382021423
 const express = require('express');
 const app = express();
 
-app.get('/', function (req, res) {
-    res.send('Hello World!');
-});
+// app.get('/', function (req, res) {
+//     res.send('Hello World!');
+// });
 
-app.listen(3000, function () {
-    console.log('Example app listening!');
-});
+// app.listen(3000, function () {
+//     console.log('Example app listening!');
+// });
 
 const clinet = new Discord.Client({
     intents: [
